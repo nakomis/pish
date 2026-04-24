@@ -1,4 +1,4 @@
-use egui::{Align2, Color32, ColorImage, FontId, TextureHandle, Vec2};
+use egui::{Color32, ColorImage, TextureHandle, Vec2};
 use pish_core::{PishWidget, Services};
 
 /// BootBoots cat camera widget.
