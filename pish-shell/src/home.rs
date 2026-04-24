@@ -28,6 +28,7 @@ impl HomeScreen {
                     .corner_radius(12.0)
                     .show(ui, |ui| {
                         ui.set_min_size(tile_size);
+                        ui.set_max_size(tile_size);
                         widget.update(ui, services);
                     });
             }
