@@ -1,0 +1,10 @@
+[package]
+name = "widget-nakostat"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+egui = { workspace = true }
+pish-core = { workspace = true }
+# rotary-dial will be added once published to crates.io; use path dep during dev:
+# rotary-dial = { path = "../../../rotary-dial/rotary-dial" }

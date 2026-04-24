@@ -1,0 +1,14 @@
+[workspace]
+members = [
+    "pish-core",
+    "pish-shell",
+    "widgets/clock",
+    "widgets/nakostat",
+    "widgets/bootboots",
+]
+resolver = "2"
+
+[workspace.dependencies]
+egui = "0.31"
+eframe = { version = "0.31", default-features = false, features = ["glow"] }
+pish-core = { path = "pish-core" }

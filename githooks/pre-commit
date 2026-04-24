@@ -1,0 +1,24 @@
+#!/bin/bash
+
+FILES=$(git diff --cached --name-status)
+
+if [[ $FILES =~ .drawio ]]; then
+    echo
+    echo "--- Auto-generating SVG files for drawio diagrams ---"
+    find docs -name "*.drawio" | while read -r f; do
+        svg="${f%.drawio}.svg"
+        /Applications/draw.io.app/Contents/MacOS/draw.io -x "$f" -f svg -s 1 "$svg"
+        git add "$svg"
+    done
+    echo
+fi
+
+if [[ $FILES =~ README.md ]]; then
+    echo
+    echo "--- Updating Table of Contents in README.md ---"
+    npx markdown-toc -i README.md
+    git add README.md
+    echo
+fi
+
+exit 0

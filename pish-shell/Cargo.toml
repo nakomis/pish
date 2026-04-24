@@ -1,0 +1,16 @@
+[package]
+name = "pish-shell"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "pish"
+path = "src/main.rs"
+
+[dependencies]
+eframe = { workspace = true }
+egui = { workspace = true }
+pish-core = { workspace = true }
+widget-clock = { path = "../widgets/clock" }
+widget-nakostat = { path = "../widgets/nakostat" }
+widget-bootboots = { path = "../widgets/bootboots" }
