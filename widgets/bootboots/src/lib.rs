@@ -21,10 +21,10 @@ impl BootBootsWidget {
     pub fn new() -> Self {
         Self {
             cats: vec![
-                CatSlide { name: "Mu",    image_bytes: include_bytes!("../../../../bootboots/docs/mu.jpeg") },
-                CatSlide { name: "Tau",   image_bytes: include_bytes!("../../../../bootboots/docs/cats/tau.jpg") },
-                CatSlide { name: "Chi",   image_bytes: include_bytes!("../../../../bootboots/docs/cats/chi.jpg") },
-                CatSlide { name: "Kappa", image_bytes: include_bytes!("../../../../bootboots/docs/cats/kappa.jpg") },
+                CatSlide { name: "Mu",    image_bytes: include_bytes!("../assets/mu.jpeg") },
+                CatSlide { name: "Tau",   image_bytes: include_bytes!("../assets/tau.jpg") },
+                CatSlide { name: "Chi",   image_bytes: include_bytes!("../assets/chi.jpg") },
+                CatSlide { name: "Kappa", image_bytes: include_bytes!("../assets/kappa.jpg") },
             ],
             current: 0,
             texture: None,
