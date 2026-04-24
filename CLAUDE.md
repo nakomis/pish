@@ -21,6 +21,7 @@ This project adopts a **test-first approach** wherever practical:
 - Run tests: `cargo test --workspace`
 - Run coverage: `cargo llvm-cov --workspace`
 - PRs cannot be merged to `main` unless all CI checks pass. Admins may bypass in emergencies.
+- `update()` on `PishWidget` is intentionally **not** unit-tested — constructing `egui::Ui` requires a full rendering context. Verified by running the app locally instead.
 
 ## Architecture
 
@@ -49,6 +50,16 @@ The home screen is an iPad-style customisable grid. Each tile is 320×280 px min
 
 - **nakostat**: Thermostat dial — depends on `rotary-dial` (path dep during dev, crates.io once published).
 - **bootboots**: Cat camera — currently static slideshow; TODO live BootBoots API.
+
+## Local smoke test (macOS)
+
+`eframe` runs natively on macOS. To smoke-test before deploying to the Pi:
+
+```bash
+cargo run
+```
+
+This opens the full widget grid in a native window. All widgets are visible and interactive.
 
 ## Running on Pi
 

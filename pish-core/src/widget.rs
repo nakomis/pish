@@ -16,5 +16,44 @@ pub trait PishWidget: Send {
     fn min_size(&self) -> Vec2;
 
     /// Called every frame when the widget is visible. Draw into `ui`.
+    /// Note: `update()` is intentionally not unit-tested — constructing `egui::Ui`
+    /// requires a full rendering context. Verified by running the app locally.
     fn update(&mut self, ui: &mut Ui, services: &Services);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct MockWidget;
+
+    impl PishWidget for MockWidget {
+        fn id(&self) -> &'static str { "mock" }
+        fn title(&self) -> &str { "Mock Widget" }
+        fn min_size(&self) -> Vec2 { Vec2::new(100.0, 80.0) }
+        fn update(&mut self, _ui: &mut Ui, _services: &Services) {}
+    }
+
+    #[test]
+    fn mock_widget_id() {
+        assert_eq!(MockWidget.id(), "mock");
+    }
+
+    #[test]
+    fn mock_widget_title() {
+        assert_eq!(MockWidget.title(), "Mock Widget");
+    }
+
+    #[test]
+    fn mock_widget_min_size() {
+        let size = MockWidget.min_size();
+        assert_eq!(size.x, 100.0);
+        assert_eq!(size.y, 80.0);
+    }
+
+    #[test]
+    fn mock_widget_is_send() {
+        fn assert_send<T: Send>() {}
+        assert_send::<MockWidget>();
+    }
 }

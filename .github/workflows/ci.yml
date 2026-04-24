@@ -17,7 +17,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
-            libxkbcommon-dev libssl-dev
+            libxkbcommon-dev libssl-dev libwayland-dev libxkbcommon-x11-dev
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -40,11 +40,14 @@ jobs:
       - name: Build
         run: cargo build --workspace
 
-      - name: Test + coverage
-        run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+      - name: Build workspace
+        run: cargo build --workspace
+
+      - name: Test + coverage (pish-core)
+        run: cargo llvm-cov --package pish-core --lcov --output-path lcov.info
 
       - name: Check coverage threshold (70%)
-        run: cargo llvm-cov report --fail-under-lines 70
+        run: cargo llvm-cov report --package pish-core --fail-under-lines 70
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4

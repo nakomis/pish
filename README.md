@@ -38,6 +38,14 @@ pish/
 └── scripts/          Helper scripts
 ```
 
+## Running locally (macOS smoke test)
+
+`eframe` runs natively on macOS. To see the full widget grid before deploying to the Pi:
+
+```bash
+cargo run
+```
+
 ## Building
 
 ```bash
