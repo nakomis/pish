@@ -1,5 +1,7 @@
 # Pish — Pi Shell
 
+<img src="docs/icon.png" alt="Pish icon — a raspberry thistle with widget tiles" width="120" align="right"/>
+
 > A widget host for Raspberry Pi touch screens, written in Rust with [egui](https://github.com/emilk/egui).
 
 Pish is a lightweight, iPad-style widget framework that runs on a Pi 5 + 7" touch display. Widgets are compiled in statically and rendered in a customisable grid. The first widgets are a digital clock, the [Nakostat](https://github.com/nakomis/nakostat) thermostat dial, and a BootBoots cat-camera slideshow.
