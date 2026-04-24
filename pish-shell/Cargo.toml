@@ -14,3 +14,4 @@ pish-core = { workspace = true }
 widget-clock = { path = "../widgets/clock" }
 widget-nakostat = { path = "../widgets/nakostat" }
 widget-bootboots = { path = "../widgets/bootboots" }
+chrono = "0.4"
