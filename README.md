@@ -12,7 +12,7 @@ Pish is a lightweight, iPad-style widget framework that runs on a Pi 5 + 7" touc
 
 If you find Pish useful, a small donation is very welcome:
 
-[![Donate via PayPal](https://www.paypalobjects.com/en_GB/i/btn/btn_donate_LG.gif)](https://www.paypal.com/donate/?hosted_button_id=NAKOMIS)
+[![Donate via PayPal](https://www.paypalobjects.com/en_GB/i/btn/btn_donate_LG.gif)](https://www.paypal.com/donate?hosted_button_id=Q3BESC73EWVNN&custom=pish)
 
 ---
 
@@ -83,4 +83,4 @@ CI requires ≥ 70 % line coverage.
 
 ## Support
 
-[![Donate via PayPal](https://www.paypalobjects.com/en_GB/i/btn/btn_donate_LG.gif)](https://www.paypal.com/donate/?hosted_button_id=NAKOMIS)
+[![Donate via PayPal](https://www.paypalobjects.com/en_GB/i/btn/btn_donate_LG.gif)](https://www.paypal.com/donate?hosted_button_id=Q3BESC73EWVNN&custom=pish)
