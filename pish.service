@@ -1,0 +1,12 @@
+[Unit]
+Description=Pish — Pi Shell widget host
+After=multi-user.target
+
+[Service]
+Environment=XDG_RUNTIME_DIR=/tmp
+ExecStart=/usr/bin/cage -- /usr/local/bin/pish
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
