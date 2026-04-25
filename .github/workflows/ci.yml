@@ -6,6 +6,11 @@ on:
   push:
     branches: [main]
 
+# Check out the post-merge state on PRs so CI validates what will land on main,
+# not just the branch tip. Falls back to the commit SHA on push/workflow_dispatch.
+env:
+  CHECKOUT_REF: ${{ github.event_name == 'pull_request' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
+
 permissions:
   contents: read
   id-token: write
@@ -16,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
 
       - name: Configure AWS credentials (CodeArtifact)
         uses: aws-actions/configure-aws-credentials@v4
