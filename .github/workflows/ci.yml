@@ -20,7 +20,7 @@ jobs:
       - name: Configure AWS credentials (CodeArtifact)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::975050268859:role/pish-github-ci-sandbox
+          role-to-assume: arn:aws:iam::975050268859:role/nakomis-pish-github-ci-sandbox
           aws-region: eu-west-2
 
       - name: Install system dependencies
