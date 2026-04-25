@@ -1,4 +1,5 @@
 [registries.nakomis-codeartifact]
+index = "sparse+https://artifacts.sandbox.nakomis.com/cargo/cargo/"
 credential-provider = "cargo:token"
 
 [target.aarch64-unknown-linux-gnu]
