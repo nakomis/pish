@@ -30,7 +30,8 @@ jobs:
             --domain-owner 975050268859 \
             --query authorizationToken \
             --output text)
-          echo "CARGO_REGISTRIES_NAKOMIS_CODEARTIFACT_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
+          echo "CARGO_REGISTRIES_NAKOMIS_CODEARTIFACT_INDEX=sparse+https://artifacts.sandbox.nakomis.com/cargo/cargo/" >> "$GITHUB_ENV"
+          echo "CARGO_REGISTRIES_NAKOMIS_CODEARTIFACT_TOKEN=Bearer ${TOKEN}" >> "$GITHUB_ENV"
 
       - name: Install system dependencies
         run: |

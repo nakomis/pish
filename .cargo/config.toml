@@ -1,5 +1,2 @@
-[registries.nakomis-codeartifact]
-index = "sparse+https://artifacts.sandbox.nakomis.com/cargo/cargo/"
-
 [target.aarch64-unknown-linux-gnu]
 linker = "aarch64-linux-gnu-gcc"
