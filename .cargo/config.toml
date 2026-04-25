@@ -1,4 +1,4 @@
-[registries.nakomis-codeartifact]
+[registries.nakomis_codeartifact]
 index = "sparse+https://artifacts.sandbox.nakomis.com/cargo/cargo/"
 credential-provider = "cargo:token"
 
