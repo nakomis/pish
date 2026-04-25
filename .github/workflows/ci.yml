@@ -6,12 +6,31 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   rust:
     name: Rust (cargo test + llvm-cov)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (CodeArtifact)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::975050268859:role/pish-github-ci-sandbox
+          aws-region: eu-west-2
+
+      - name: Authenticate Cargo to CodeArtifact
+        run: |
+          TOKEN=$(aws codeartifact get-authorization-token \
+            --domain nakomis-sandbox \
+            --domain-owner 975050268859 \
+            --query authorizationToken \
+            --output text)
+          echo "CARGO_REGISTRIES_NAKOMIS_CODEARTIFACT_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
 
       - name: Install system dependencies
         run: |
@@ -38,9 +57,6 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Build
-        run: cargo build --workspace
-
-      - name: Build workspace
         run: cargo build --workspace
 
       - name: Test + coverage (pish-core)
