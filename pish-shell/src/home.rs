@@ -5,6 +5,10 @@ use pish_core::{PishWidget, Services};
 pub struct HomeScreen {
     widgets: Vec<Box<dyn PishWidget>>,
     focused: Option<usize>,
+    /// Index of the widget currently animating (valid while t > 0).
+    last_focused: usize,
+    /// Screen rects of each tile as of the last grid render — used as animation source.
+    tile_rects: Vec<egui::Rect>,
 }
 
 impl HomeScreen {
@@ -16,19 +20,22 @@ impl HomeScreen {
                 Box::new(widget_bootboots::BootBootsWidget::new()),
             ],
             focused: None,
+            last_focused: 0,
+            tile_rects: Vec::new(),
         }
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui, services: &Services) {
+        let ctx = ui.ctx().clone();
+        let panel_rect = ui.max_rect();
         let tile_size = egui::vec2(320.0, 280.0);
-        let focus = self.focused;
 
-        if let Some(i) = focus {
-            if ui.button("‹ Back").clicked() {
-                self.focused = None;
-            }
-            self.widgets[i].update(ui, services);
-        } else {
+        let anim_id = egui::Id::new("home_focus");
+        let t = ease_out(ctx.animate_bool_with_time(anim_id, self.focused.is_some(), 0.3));
+
+        if self.focused.is_none() && t == 0.0 {
+            // Pure grid mode: render tiles and record their screen rects.
+            self.tile_rects.resize(self.widgets.len(), egui::Rect::NOTHING);
             let mut next_focus: Option<usize> = None;
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
@@ -42,14 +49,65 @@ impl HomeScreen {
                             ui.set_max_size(tile_size);
                             widget.update(ui, services);
                         });
+                    self.tile_rects[i] = resp.response.rect;
                     if ui.interact(resp.response.rect, tile_id, egui::Sense::click()).clicked() {
                         next_focus = Some(i);
                     }
                 }
             });
-            self.focused = next_focus;
+            if let Some(i) = next_focus {
+                self.focused = Some(i);
+                self.last_focused = i;
+                ctx.request_repaint();
+            }
+        } else {
+            // Focused or mid-transition.
+            let i = self.last_focused;
+            let source = self.tile_rects.get(i).copied().unwrap_or(panel_rect);
+            let current = lerp_rect(source, panel_rect, t);
+
+            if t >= 1.0 {
+                // Fully focused: back button above the widget.
+                if ui.button("‹ Back").clicked() {
+                    self.focused = None;
+                }
+                self.widgets[i].update(ui, services);
+            } else {
+                // Mid-transition: widget expands from tile rect toward full panel.
+                let corner = 12.0 * (1.0 - t);
+                ui.allocate_new_ui(egui::UiBuilder::new().max_rect(current), |ui| {
+                    egui::Frame::new()
+                        .fill(egui::Color32::from_rgb(0x1e, 0x1e, 0x2e))
+                        .corner_radius(corner)
+                        .show(ui, |ui| {
+                            ui.set_min_size(current.size());
+                            ui.set_max_size(current.size());
+                            self.widgets[i].update(ui, services);
+                        });
+                });
+                ctx.request_repaint();
+            }
         }
     }
+}
+
+/// Interpolate between two screen-space rects.
+fn lerp_rect(a: egui::Rect, b: egui::Rect, t: f32) -> egui::Rect {
+    egui::Rect {
+        min: egui::pos2(
+            egui::lerp(a.min.x..=b.min.x, t),
+            egui::lerp(a.min.y..=b.min.y, t),
+        ),
+        max: egui::pos2(
+            egui::lerp(a.max.x..=b.max.x, t),
+            egui::lerp(a.max.y..=b.max.y, t),
+        ),
+    }
+}
+
+/// Cubic ease-out: fast start, decelerates into the final position.
+fn ease_out(t: f32) -> f32 {
+    1.0 - (1.0 - t).powi(3)
 }
 
 #[cfg(test)]
@@ -75,5 +133,20 @@ mod tests {
     fn focus_index_bounds() {
         let screen = HomeScreen::new();
         assert!(screen.focused.unwrap_or(0) < screen.widgets.len() || screen.focused.is_none());
+    }
+
+    #[test]
+    fn ease_out_bounds() {
+        assert_eq!(ease_out(0.0), 0.0);
+        assert_eq!(ease_out(1.0), 1.0);
+        assert!(ease_out(0.5) > 0.5); // accelerates past linear at t=0.5
+    }
+
+    #[test]
+    fn lerp_rect_endpoints() {
+        let a = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(100.0, 80.0));
+        let b = egui::Rect::from_min_size(egui::pos2(200.0, 150.0), egui::vec2(400.0, 300.0));
+        assert_eq!(lerp_rect(a, b, 0.0), a);
+        assert_eq!(lerp_rect(a, b, 1.0), b);
     }
 }
