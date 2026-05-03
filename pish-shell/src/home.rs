@@ -68,7 +68,8 @@ impl HomeScreen {
 
             if t >= 1.0 {
                 // Fully focused: back button above the widget.
-                if ui.button("‹ Back").clicked() {
+                let back_label = egui::RichText::new("‹ Back").size(56.0);
+                if ui.add(egui::Button::new(back_label).min_size(egui::vec2(240.0, 112.0))).clicked() {
                     self.focused = None;
                 }
                 self.widgets[i].update(ui, services);

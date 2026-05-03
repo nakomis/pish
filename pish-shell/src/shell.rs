@@ -22,6 +22,8 @@ impl eframe::App for App {
         self.services.clock.time = clock_time(&now);
         self.services.clock.date = clock_date(&now);
 
+        ctx.set_cursor_icon(egui::CursorIcon::None);
+
         egui::CentralPanel::default().show(ctx, |ui| {
             self.home.show(ui, &self.services);
         });
