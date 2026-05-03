@@ -19,6 +19,10 @@ pub trait PishWidget: Send {
     /// Note: `update()` is intentionally not unit-tested — constructing `egui::Ui`
     /// requires a full rendering context. Verified by running the app locally.
     fn update(&mut self, ui: &mut Ui, services: &Services);
+
+    /// Called by the shell when the widget transitions from tile to full-screen.
+    /// Override to reset any interaction state that should not carry over from the opening tap.
+    fn on_focus(&mut self) {}
 }
 
 #[cfg(test)]
