@@ -47,6 +47,10 @@ impl HomeScreen {
                         .show(ui, |ui| {
                             ui.set_min_size(tile_size);
                             ui.set_max_size(tile_size);
+                            // Disable interaction in tile view — only the tile frame itself
+                            // should respond to taps. Avoids widget state being altered by
+                            // the same touch that opens the widget.
+                            ui.disable();
                             widget.update(ui, services);
                         });
                     self.tile_rects[i] = resp.response.rect;
