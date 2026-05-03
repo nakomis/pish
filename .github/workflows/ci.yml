@@ -28,6 +28,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: nakomis/rotary-dial
+          ref: chore/make-public
           path: rotary-dial
 
       - name: Configure AWS credentials (CodeArtifact)
