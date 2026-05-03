@@ -56,6 +56,7 @@ impl HomeScreen {
                 }
             });
             if let Some(i) = next_focus {
+                self.widgets[i].on_focus();
                 self.focused = Some(i);
                 self.last_focused = i;
                 ctx.request_repaint();
