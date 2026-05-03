@@ -74,16 +74,10 @@ impl HomeScreen {
                 self.widgets[i].update(ui, services);
             } else {
                 // Mid-transition: widget expands from tile rect toward full panel.
-                let corner = 12.0 * (1.0 - t);
                 ui.allocate_new_ui(egui::UiBuilder::new().max_rect(current), |ui| {
-                    egui::Frame::new()
-                        .fill(egui::Color32::from_rgb(0x1e, 0x1e, 0x2e))
-                        .corner_radius(corner)
-                        .show(ui, |ui| {
-                            ui.set_min_size(current.size());
-                            ui.set_max_size(current.size());
-                            self.widgets[i].update(ui, services);
-                        });
+                    ui.set_min_size(current.size());
+                    ui.set_max_size(current.size());
+                    self.widgets[i].update(ui, services);
                 });
                 ctx.request_repaint();
             }
