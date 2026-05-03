@@ -83,9 +83,11 @@ impl HomeScreen {
                 }
             } else {
                 // Mid-transition: widget expands from tile rect toward full panel.
+                // Disable interaction so the opening tap/drag doesn't affect widget state.
                 ui.allocate_new_ui(egui::UiBuilder::new().max_rect(current), |ui| {
                     ui.set_min_size(current.size());
                     ui.set_max_size(current.size());
+                    ui.set_enabled(false);
                     self.widgets[i].update(ui, services);
                 });
                 ctx.request_repaint();
