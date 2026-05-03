@@ -67,12 +67,20 @@ impl HomeScreen {
             let current = lerp_rect(source, panel_rect, t);
 
             if t >= 1.0 {
-                // Fully focused: back button above the widget.
-                let back_label = egui::RichText::new("‹ Back").size(56.0);
-                if ui.add(egui::Button::new(back_label).min_size(egui::vec2(240.0, 112.0))).clicked() {
+                // Fully focused: widget fills the panel, back button floats over it.
+                self.widgets[i].update(ui, services);
+                let back_label = egui::RichText::new("‹ Back").size(42.0);
+                let back_pos = panel_rect.min + egui::vec2(8.0, 8.0);
+                let back_clicked = egui::Area::new(egui::Id::new("back_button"))
+                    .fixed_pos(back_pos)
+                    .order(egui::Order::Foreground)
+                    .show(&ctx, |ui| {
+                        ui.add(egui::Button::new(back_label).min_size(egui::vec2(180.0, 84.0))).clicked()
+                    })
+                    .inner;
+                if back_clicked {
                     self.focused = None;
                 }
-                self.widgets[i].update(ui, services);
             } else {
                 // Mid-transition: widget expands from tile rect toward full panel.
                 ui.allocate_new_ui(egui::UiBuilder::new().max_rect(current), |ui| {
