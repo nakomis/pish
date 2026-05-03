@@ -20,7 +20,13 @@ impl PishWidget for NakostatWidget {
     fn min_size(&self) -> Vec2 { Vec2::new(300.0, 300.0) }
 
     fn update(&mut self, ui: &mut egui::Ui, _services: &Services) {
-        self.dial.show(ui);
+        let available = ui.available_size();
+        let size = available.min_elem().max(100.0);
+        let y_pad = ((available.y - size) / 2.0).max(0.0);
+        ui.add_space(y_pad);
+        ui.vertical_centered(|ui| {
+            self.dial.show(ui);
+        });
     }
 }
 
