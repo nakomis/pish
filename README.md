@@ -43,8 +43,29 @@ pish/
 `eframe` runs natively on macOS. To see the full widget grid before deploying to the Pi:
 
 ```bash
+./scripts/run-local.sh
+# or directly:
 cargo run
 ```
+
+## Deploying to the Pi
+
+Cross-compile and copy the binary:
+
+```bash
+./scripts/build-pi.sh
+./scripts/deploy-pi.sh
+```
+
+Pish runs as a systemd service (`pish.service`) inside [cage](https://github.com/cage-kiosk/cage), a minimal Wayland kiosk compositor. It starts automatically on boot.
+
+## Connecting via VNC
+
+[wayvnc](https://github.com/any1/wayvnc) is installed and enabled as a systemd service (`wayvnc.service`). It attaches to cage's Wayland session automatically after `pish.service` starts.
+
+To connect, open RealVNC Viewer and connect to `pish.local` (port 5900). You will be prompted for the Pi login password.
+
+No manual steps are needed after a reboot — both `pish.service` and `wayvnc.service` start automatically.
 
 ## Building
 
