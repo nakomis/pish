@@ -16,8 +16,37 @@ permissions:
   id-token: write
 
 jobs:
+  # Work out which parts of the repo changed, so docs-only changes can skip the
+  # expensive build and test jobs.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Filter paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          # A file counts as "code" only if it matches every pattern below, i.e.
+          # it is anything other than documentation.
+          predicate-quantifier: every
+          filters: |
+            code:
+              - '**'
+              - '!docs/**'
+              - '!**/*.md'
+              - '!LICENSE'
+
   rust:
     name: Rust (cargo test + llvm-cov)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -78,3 +107,32 @@ jobs:
         with:
           name: coverage
           path: pish/lcov.info
+
+  # Single required status check for branch protection. Always runs and reports a
+  # result: passes when every job succeeded or was skipped by the path filter, and
+  # fails if any job failed or was cancelled.
+  ci-status:
+    name: CI Status
+    if: always()
+    needs: [changes, rust]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job results
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          RUST_RESULT: ${{ needs.rust.result }}
+        run: |
+          echo "changes: ${CHANGES_RESULT}"
+          echo "rust:    ${RUST_RESULT}"
+          if [ "${CHANGES_RESULT}" != "success" ]; then
+            echo "::error::Change detection did not succeed (${CHANGES_RESULT})"
+            exit 1
+          fi
+          case "${RUST_RESULT}" in
+            success|skipped) ;;
+            *)
+              echo "::error::Rust job did not succeed (${RUST_RESULT})"
+              exit 1
+              ;;
+          esac
+          echo "All required jobs passed or were skipped."
