@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+chrono = "0.4"
 egui = { workspace = true }
+log = "0.4"
 pish-core = { workspace = true }
 rotary-dial = { path = "../../../rotary-dial/rotary-dial" }
+serde_json = "1"

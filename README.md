@@ -28,7 +28,7 @@ If you find Pish useful, a small donation is very welcome:
 
 ```
 pish/
-├── pish-core/        PishWidget trait, Services (WiFi, clock, brightness)
+├── pish-core/        PishWidget trait, Services (WiFi, clock, brightness, MQTT), config
 ├── pish-shell/       eframe app — home screen grid, widget lifecycle
 ├── widgets/
 │   ├── clock/
@@ -58,6 +58,46 @@ Cross-compile and copy the binary:
 ```
 
 Pish runs as a systemd service (`pish.service`) inside [cage](https://github.com/cage-kiosk/cage), a minimal Wayland kiosk compositor. It starts automatically on boot.
+
+## Configuration
+
+Pish reads `/etc/pish/pish.toml` (override with `--config <path>` or `PISH_CONFIG`). See [`pish.toml.example`](pish.toml.example). A missing file is fine — pish runs without MQTT, which is what you want for the macOS smoke test.
+
+Every value can be overridden from the environment:
+
+| Variable | Overrides |
+|----------|-----------|
+| `PISH_MQTT_ENDPOINT` | `mqtt.endpoint` |
+| `PISH_MQTT_PORT` | `mqtt.port` |
+| `PISH_MQTT_CLIENT_ID` | `mqtt.client_id` |
+| `PISH_MQTT_CERT_PATH` | `mqtt.cert_path` |
+| `PISH_MQTT_KEY_PATH` | `mqtt.key_path` |
+| `PISH_NAKOSTAT_SETPOINT_TOPIC` | `nakostat.setpoint_topic` |
+
+### Nakostat setpoint over MQTT
+
+When the thermostat dial settles (finger lifted and unchanged for 1.5 s) the widget publishes once to [Nakostat](https://github.com/nakomis/nakostat)'s AWS IoT Core broker over mutual TLS:
+
+- **Topic:** `nakostat/<env>/pish/setpoint`
+- **Payload:** `{"temperature": 21.5, "timestamp": "2026-10-13T07:30:00.000Z", "userId": "nakostat-pish-prod"}` — the same schema the Nakostat setpoint API publishes on `nakostat/<env>/api/setpoint`, with `userId` set to the display's thing name.
+
+The IoT thing (`nakostat-pish-<env>`), its policy, certificate and the topic rule that applies the setpoint are defined in Nakostat's CDK (`infra/lib/iot-stack.ts`, `infra/lib/iot-rules-stack.ts`). The certificate and private key land in SSM Parameter Store when that stack is deployed. To install them on the Pi:
+
+```bash
+ENV=prod   # or sandbox
+aws ssm get-parameter --name /nakostat/$ENV/pish/certPem --with-decryption \
+  --query Parameter.Value --output text > cert.pem
+aws ssm get-parameter --name /nakostat/$ENV/pish/privKey --with-decryption \
+  --query Parameter.Value --output text > key.pem
+ssh pish 'sudo install -d -m 700 /etc/pish/certs'
+scp cert.pem key.pem pish.toml.example pish:/tmp/
+ssh pish 'sudo install -m 600 /tmp/cert.pem /tmp/key.pem /etc/pish/certs/ \
+  && sudo install -m 644 /tmp/pish.toml.example /etc/pish/pish.toml \
+  && rm /tmp/cert.pem /tmp/key.pem /tmp/pish.toml.example'
+shred -u cert.pem key.pem
+# then edit /etc/pish/pish.toml: endpoint (`aws iot describe-endpoint --endpoint-type iot:Data-ATS`),
+# client_id and setpoint_topic for $ENV, and `sudo systemctl restart pish`.
+```
 
 ## Connecting via VNC
 

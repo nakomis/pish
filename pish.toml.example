@@ -1,0 +1,16 @@
+# Pish runtime configuration.
+# Copy to /etc/pish/pish.toml on the Pi (or pass --config <path>, or set PISH_CONFIG).
+# Without an [mqtt] section pish still runs, but the thermostat dial is local-only.
+
+[mqtt]
+# AWS IoT Core ATS data endpoint — `aws iot describe-endpoint --endpoint-type iot:Data-ATS`
+endpoint  = "abc123-ats.iot.eu-west-2.amazonaws.com"
+port      = 8883
+# Must match the IoT thing name: the policy only lets this client id connect.
+client_id = "nakostat-pish-prod"
+cert_path = "/etc/pish/certs/cert.pem"
+key_path  = "/etc/pish/certs/key.pem"
+
+[nakostat]
+# Where the dial publishes the setpoint once it settles.
+setpoint_topic = "nakostat/prod/pish/setpoint"

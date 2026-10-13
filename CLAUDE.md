@@ -27,7 +27,7 @@ This project adopts a **test-first approach** wherever practical:
 
 ```
 pish/
-├── pish-core/        PishWidget trait, Services struct (WiFi, clock, brightness)
+├── pish-core/        PishWidget trait, Services struct (WiFi, clock, brightness, MQTT), Config
 ├── pish-shell/       eframe app — home screen grid, widget lifecycle
 └── widgets/
     ├── clock/        Digital clock (uses services.clock)
