@@ -1,4 +1,4 @@
-use pish_core::{PishWidget, Services};
+use pish_core::{Config, PishWidget, Services};
 
 /// The home screen renders the widget grid and handles tile arrangement.
 /// TODO: persist layout, implement edit mode (long-press to rearrange).
@@ -12,11 +12,13 @@ pub struct HomeScreen {
 }
 
 impl HomeScreen {
-    pub fn new() -> Self {
+    pub fn new(config: &Config) -> Self {
         Self {
             widgets: vec![
                 Box::new(widget_clock::ClockWidget::new()),
-                Box::new(widget_nakostat::NakostatWidget::new()),
+                Box::new(widget_nakostat::NakostatWidget::new(
+                    config.nakostat.setpoint_topic.clone(),
+                )),
                 Box::new(widget_bootboots::BootBootsWidget::new()),
             ],
             focused: None,
@@ -124,13 +126,13 @@ mod tests {
 
     #[test]
     fn new_screen_has_no_focus() {
-        let screen = HomeScreen::new();
+        let screen = HomeScreen::new(&Config::default());
         assert!(screen.focused.is_none());
     }
 
     #[test]
     fn focus_can_be_set_and_cleared() {
-        let mut screen = HomeScreen::new();
+        let mut screen = HomeScreen::new(&Config::default());
         screen.focused = Some(0);
         assert_eq!(screen.focused, Some(0));
         screen.focused = None;
@@ -139,7 +141,7 @@ mod tests {
 
     #[test]
     fn focus_index_bounds() {
-        let screen = HomeScreen::new();
+        let screen = HomeScreen::new(&Config::default());
         assert!(screen.focused.unwrap_or(0) < screen.widgets.len() || screen.focused.is_none());
     }
 

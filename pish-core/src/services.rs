@@ -1,9 +1,16 @@
+use std::sync::Arc;
+
+use crate::mqtt::MqttPublisher;
+
 /// Shared system services injected into every widget on each frame.
 #[derive(Default, Clone)]
 pub struct Services {
     pub wifi: WifiStatus,
     pub clock: ClockInfo,
     pub brightness: f32, // 0.0–1.0
+    /// MQTT broker connection, if configured. `None` when pish has no MQTT
+    /// config (e.g. the local smoke test) — widgets must cope with that.
+    pub mqtt: Option<Arc<dyn MqttPublisher>>,
 }
 
 #[derive(Default, Clone)]
@@ -42,6 +49,11 @@ mod tests {
         assert!(!s.wifi.connected);
         assert!(s.wifi.ssid.is_none());
         assert!(s.wifi.signal_dbm.is_none());
+    }
+
+    #[test]
+    fn services_default_has_no_mqtt() {
+        assert!(Services::default().mqtt.is_none());
     }
 
     #[test]
