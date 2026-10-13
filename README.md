@@ -21,7 +21,7 @@ If you find Pish useful, a small donation is very welcome:
 | Widget | Description |
 |--------|-------------|
 | `clock` | Digital clock and date, drawn from a shared `Services` struct |
-| `nakostat` | Thermostat rotary dial with MQTT setpoint (depends on `rotary-dial`) |
+| `nakostat` | Thermostat rotary dial with MQTT setpoint (depends on `rotary-dial`) and live readings from the sensor daemon |
 | `bootboots` | Cat-camera slideshow — Mu → Tau → Chi → Kappa, tap to advance |
 
 ## Repo layout
@@ -106,6 +106,16 @@ shred -u cert.pem key.pem
 To connect, open RealVNC Viewer and connect to `pish.local` (port 5900). You will be prompted for the Pi login password.
 
 No manual steps are needed after a reboot — both `pish.service` and `wayvnc.service` start automatically.
+
+## Sensor readings
+
+The Nakostat widget shows live temperature, humidity, eCO₂ and TVOC from nakostat's sensor daemon, which runs on the same Pi and streams newline-delimited JSON over a Unix socket. Pish is a read-only client of that socket:
+
+- Socket path defaults to `/run/nakostat/sensor.sock`; override it with `NAKOSTAT_SOCKET_PATH` (the same variable the daemon honours), e.g. `Environment=NAKOSTAT_SOCKET_PATH=...` in `pish.service`.
+- If the daemon isn't running the widget shows **No sensor daemon** and retries with exponential backoff (0.5 s doubling to a 30 s cap), reconnecting automatically once the socket appears.
+- A **warming up** badge is shown whilst the ENS160 is still settling after a cold start.
+
+For the macOS smoke test there is normally no daemon, so the widget will sit in the "No sensor daemon" state.
 
 ## Building
 

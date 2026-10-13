@@ -5,6 +5,8 @@ use crate::mqtt::MqttPublisher;
 /// Shared system services injected into every widget on each frame.
 #[derive(Default, Clone)]
 pub struct Services {
+    /// Latest readings from the nakostat sensor daemon. Reading it never blocks.
+    pub sensor: crate::sensor::SensorHandle,
     pub wifi: WifiStatus,
     pub clock: ClockInfo,
     pub brightness: f32, // 0.0–1.0
@@ -34,6 +36,12 @@ mod tests {
     fn services_default_brightness() {
         let s = Services::default();
         assert_eq!(s.brightness, 0.0);
+    }
+
+    #[test]
+    fn services_default_sensor_is_connecting() {
+        let s = Services::default();
+        assert_eq!(s.sensor.status(), crate::SensorStatus::default());
     }
 
     #[test]
