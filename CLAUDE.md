@@ -31,7 +31,7 @@ pish/
 ├── pish-shell/       eframe app — home screen grid, widget lifecycle
 └── widgets/
     ├── clock/        Digital clock (uses services.clock)
-    ├── nakostat/     Thermostat dial (rotary-dial crate, MQTT setpoint)
+    ├── nakostat/     Thermostat dial (rotary-dial crate, MQTT setpoint, sensor daemon readings)
     └── bootboots/    Cat camera slideshow (Mu → Tau → Chi → Kappa)
 ```
 

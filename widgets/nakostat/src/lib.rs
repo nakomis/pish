@@ -56,6 +56,9 @@ impl NakostatWidget {
     }
 }
 
+mod readings;
+use readings::ReadingsView;
+
 impl PishWidget for NakostatWidget {
     fn id(&self) -> &'static str { "nakostat" }
     fn title(&self) -> &str { "Heating" }
@@ -67,8 +70,14 @@ impl PishWidget for NakostatWidget {
 
     fn update(&mut self, ui: &mut egui::Ui, services: &Services) {
         let available = ui.available_size();
-        let size = available.min_elem().max(100.0);
-        let y_pad = ((available.y - size) / 2.0).max(0.0);
+        let readings = ReadingsView::from_status(&services.sensor.status());
+        if let Some(t) = readings.temperature_c() {
+            self.dial.current_temperature = t;
+        }
+        // Leave a strip under the dial for the sensor readings.
+        let readings_h = (available.y * 0.2).clamp(48.0, 110.0);
+        let size = available.x.min(available.y - readings_h).max(100.0);
+        let y_pad = ((available.y - size - readings_h) / 2.0).max(0.0);
 
         // Suppress setpoint changes until the opening touch has been fully released.
         let saved = self.dial.setpoint;
@@ -76,6 +85,7 @@ impl PishWidget for NakostatWidget {
         ui.vertical_centered(|ui| {
             self.dial.show(ui);
         });
+        readings.show(ui, readings_h);
         if self.waiting_for_release {
             self.dial.setpoint = saved;
             if ui.input(|i| !i.pointer.any_down()) {

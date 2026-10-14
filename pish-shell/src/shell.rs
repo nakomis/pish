@@ -6,14 +6,22 @@ use pish_core::{Config, MqttPublisher, Services};
 
 pub struct App {
     services: Services,
+    /// Keeps the sensor reader thread alive for the life of the app.
+    _sensor: pish_core::sensor::SensorFeed,
     home: crate::home::HomeScreen,
 }
 
 impl App {
     pub fn new(config: &Config) -> Self {
-        let services = Services { mqtt: connect_mqtt(config), ..Services::default() };
+        let sensor = pish_core::sensor::SensorFeed::spawn_unix(&pish_core::SensorConfig::from_env());
+        let services = Services {
+            mqtt: connect_mqtt(config),
+            sensor: sensor.handle(),
+            ..Services::default()
+        };
         Self {
             services,
+            _sensor: sensor,
             home: crate::home::HomeScreen::new(config),
         }
     }
