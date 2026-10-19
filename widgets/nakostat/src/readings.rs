@@ -146,6 +146,7 @@ mod tests {
         SensorStatus {
             link: LinkState::Connected,
             latest: Some(r),
+            ..Default::default()
         }
     }
 
@@ -153,6 +154,7 @@ mod tests {
         SensorStatus {
             link: LinkState::Retrying { attempt: 3, delay },
             latest,
+            ..Default::default()
         }
     }
 
@@ -214,7 +216,7 @@ mod tests {
     fn awaiting_first_reading_once_connected() {
         let status = SensorStatus {
             link: LinkState::Connected,
-            latest: None,
+            ..Default::default()
         };
         assert_eq!(
             ReadingsView::from_status(&status),

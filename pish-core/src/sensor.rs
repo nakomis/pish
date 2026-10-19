@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
@@ -85,6 +85,95 @@ pub fn parse_line(line: &str) -> Option<SensorReading> {
         return None;
     }
     serde_json::from_str(line).ok()
+}
+
+/// The daemon's effective control state: the `pi/state` object, sent as a
+/// `{"type":"state",…}` line. Every field but `setpoint` and `mode` is optional
+/// and unknown fields are ignored, so the daemon can evolve without breaking pish.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct DaemonState {
+    #[serde(default)]
+    pub timestamp: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub temperature: Option<f32>,
+    #[serde(default)]
+    pub humidity: Option<f32>,
+    /// `"heat"` or `"off"`.
+    #[serde(default = "default_mode")]
+    pub mode: String,
+    /// The effective setpoint (override if active, else the schedule).
+    #[serde(default)]
+    pub setpoint: Option<f32>,
+    #[serde(default)]
+    pub scheduled_setpoint: Option<f32>,
+    #[serde(default, rename = "override")]
+    pub override_: Option<Override>,
+    #[serde(default)]
+    pub demand: bool,
+    #[serde(default)]
+    pub demand_source: Option<String>,
+    #[serde(default)]
+    pub heatlink: Option<Heatlink>,
+}
+
+fn default_mode() -> String {
+    "heat".into()
+}
+
+/// A temporary setpoint override and when it lapses.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Override {
+    pub setpoint: f32,
+    pub until: DateTime<Utc>,
+}
+
+/// What the daemon last heard from the boiler controller.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Heatlink {
+    /// `"auto"`, `"fallback"`, `"force_on"` or `"force_off"`.
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub relay: Option<bool>,
+    #[serde(default)]
+    pub switch: Option<String>,
+    #[serde(default)]
+    pub seen: Option<DateTime<Utc>>,
+}
+
+/// A state as received, with when and in which order, so staleness and
+/// "is this new?" can be judged without trusting the daemon's clock.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StateSnapshot {
+    pub state: DaemonState,
+    pub received_at: Instant,
+    /// Increases by one with every state line received (never reset).
+    pub seq: u64,
+}
+
+/// One line of the daemon's stream.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Message {
+    Reading(SensorReading),
+    State(Box<DaemonState>),
+}
+
+/// Parse a line of either kind. Lines with an unknown `type`, lines that
+/// match neither shape, and blank lines yield `None`. Reading lines carry no
+/// `type` field.
+pub fn parse_message(line: &str) -> Option<Message> {
+    let line = line.trim();
+    if line.is_empty() {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    match value.get("type") {
+        None => serde_json::from_value(value).ok().map(Message::Reading),
+        Some(t) if t == "state" => serde_json::from_value(value)
+            .ok()
+            .map(|s| Message::State(Box::new(s))),
+        Some(_) => None,
+    }
 }
 
 // ── Reconnect state machine ───────────────────────────────────────────────────
@@ -207,6 +296,8 @@ impl SensorSource for UnixSocketSource {
 pub struct SensorStatus {
     pub link: LinkState,
     pub latest: Option<SensorReading>,
+    /// The latest daemon state on the current connection, if any.
+    pub state: Option<StateSnapshot>,
 }
 
 impl Default for SensorStatus {
@@ -214,6 +305,7 @@ impl Default for SensorStatus {
         Self {
             link: LinkState::Connecting,
             latest: None,
+            state: None,
         }
     }
 }
@@ -284,13 +376,14 @@ fn run<S: SensorSource>(
     handle: &SensorHandle,
     stop: &AtomicBool,
 ) {
+    let mut seq = 0u64;
     while !stop.load(Ordering::Relaxed) {
         if let Ok(reader) = source.connect() {
             reconnect.on_connected();
             handle.update(|s| {
                 *s = SensorStatus {
                     link: LinkState::Connected,
-                    latest: None,
+                    ..Default::default()
                 }
             });
             for line in reader.lines() {
@@ -298,15 +391,32 @@ fn run<S: SensorSource>(
                     return;
                 }
                 let Ok(line) = line else { break };
-                if let Some(reading) = parse_line(&line) {
-                    handle.update(|s| s.latest = Some(reading));
+                match parse_message(&line) {
+                    Some(Message::Reading(reading)) => {
+                        handle.update(|s| s.latest = Some(reading));
+                    }
+                    Some(Message::State(state)) => {
+                        seq += 1;
+                        let snapshot = StateSnapshot {
+                            state: *state,
+                            received_at: Instant::now(),
+                            seq,
+                        };
+                        handle.update(|s| s.state = Some(snapshot));
+                    }
+                    None => {}
                 }
             }
         }
         // Socket absent, refused, or closed by the daemon: back off and retry.
         let delay = reconnect.on_failure();
         let link = reconnect.state();
-        handle.update(|s| *s = SensorStatus { link, latest: None });
+        handle.update(|s| {
+            *s = SensorStatus {
+                link,
+                ..Default::default()
+            }
+        });
         sleep_unless_stopped(delay, stop);
     }
 }
@@ -456,6 +566,85 @@ mod tests {
         assert_eq!(parse_line("   \n"), None);
     }
 
+    // ── Message parsing ──
+
+    const STATE_LINE: &str = r#"{"type":"state","timestamp":"2026-10-19T08:00:00Z","temperature":19.8,"humidity":45.2,"mode":"heat","setpoint":20.5,"scheduled_setpoint":20.0,"override":{"setpoint":20.5,"until":"2026-10-19T09:30:00Z"},"demand":true,"demand_source":"override","heatlink":{"mode":"auto","relay":true,"switch":"auto","seen":"2026-10-19T08:00:00Z"}}"#;
+
+    #[test]
+    fn message_reading_line_without_type() {
+        assert_eq!(
+            parse_message(VALID_LINE),
+            Some(Message::Reading(test_reading()))
+        );
+    }
+
+    #[test]
+    fn message_state_line_full() {
+        let Some(Message::State(s)) = parse_message(STATE_LINE) else {
+            panic!("expected state");
+        };
+        assert_eq!(s.mode, "heat");
+        assert_eq!(s.setpoint, Some(20.5));
+        assert_eq!(s.scheduled_setpoint, Some(20.0));
+        assert_eq!(s.override_.as_ref().unwrap().setpoint, 20.5);
+        assert!(s.demand);
+        assert_eq!(s.demand_source.as_deref(), Some("override"));
+        let h = s.heatlink.unwrap();
+        assert_eq!(h.mode.as_deref(), Some("auto"));
+        assert_eq!(h.relay, Some(true));
+        assert_eq!(h.switch.as_deref(), Some("auto"));
+        assert!(h.seen.is_some());
+    }
+
+    #[test]
+    fn message_state_with_nulls_and_missing_fields() {
+        let line =
+            r#"{"type":"state","mode":"off","setpoint":16.0,"override":null,"heatlink":null}"#;
+        let Some(Message::State(s)) = parse_message(line) else {
+            panic!("expected state");
+        };
+        assert_eq!(s.mode, "off");
+        assert!(s.override_.is_none() && s.heatlink.is_none());
+        assert!(!s.demand);
+        assert_eq!(s.timestamp, None);
+    }
+
+    #[test]
+    fn message_state_mode_defaults_to_heat() {
+        let Some(Message::State(s)) = parse_message(r#"{"type":"state","setpoint":19.0}"#) else {
+            panic!("expected state");
+        };
+        assert_eq!(s.mode, "heat");
+    }
+
+    #[test]
+    fn message_state_ignores_unknown_fields() {
+        let line = STATE_LINE.replace('}', r#","future":1}"#);
+        assert!(matches!(parse_message(&line), Some(Message::State(_))));
+    }
+
+    #[test]
+    fn message_unknown_type_is_ignored() {
+        assert_eq!(parse_message(r#"{"type":"banana","setpoint":1}"#), None);
+        // Even if it otherwise looks like a reading.
+        let line = VALID_LINE.replace('{', r#"{"type":"other","#);
+        assert_eq!(parse_message(&line), None);
+    }
+
+    #[test]
+    fn message_garbage_blank_and_bad_state_are_ignored() {
+        assert_eq!(parse_message(""), None);
+        assert_eq!(parse_message("  \n"), None);
+        assert_eq!(parse_message("not json"), None);
+        assert_eq!(parse_message("[1,2]"), None);
+        assert_eq!(parse_message(r#"{"type":"state","setpoint":"hot"}"#), None);
+    }
+
+    #[test]
+    fn plain_parse_line_rejects_state_lines() {
+        assert_eq!(parse_line(STATE_LINE), None);
+    }
+
     // ── Config ──
 
     #[test]
@@ -586,6 +775,28 @@ mod tests {
         });
         assert_eq!(s.link, LinkState::Connected);
         assert_eq!(s.latest.unwrap().eco2_ppm, 600);
+    }
+
+    #[test]
+    fn feed_delivers_state_with_increasing_seq() {
+        struct Once(Option<String>);
+        impl SensorSource for Once {
+            fn connect(&mut self) -> io::Result<Box<dyn BufRead + Send>> {
+                let text = self.0.take().ok_or_else(|| io::Error::other("gone"))?;
+                Ok(Box::new(BufReader::new(io::Read::chain(
+                    Cursor::new(text),
+                    Endless("\n".into()),
+                ))))
+            }
+        }
+        let off = STATE_LINE.replace("\"mode\":\"heat\"", "\"mode\":\"off\"");
+        let stream = format!("{STATE_LINE}\n{VALID_LINE}\n{{\"type\":\"x\"}}\n{off}\n");
+        let feed = SensorFeed::spawn(Once(Some(stream)), Reconnect::new(fast_policy()));
+        let s = wait_for(&feed.handle(), |s| {
+            s.state.as_ref().is_some_and(|st| st.seq == 2)
+        });
+        assert_eq!(s.state.unwrap().state.mode, "off");
+        assert_eq!(s.latest, Some(test_reading()));
     }
 
     #[test]
