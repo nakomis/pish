@@ -14,6 +14,7 @@ pub struct NakostatWidget {
     /// While set, setpoint changes are suppressed so the tap-to-open doesn't move the dial.
     waiting_for_release: bool,
     debouncer: SetpointDebouncer,
+    sync: StateSync,
     setpoint_topic: String,
 }
 
@@ -24,6 +25,7 @@ impl NakostatWidget {
             debouncer: SetpointDebouncer::new(dial.setpoint, SETTLE_TIME),
             dial,
             waiting_for_release: false,
+            sync: StateSync::default(),
             setpoint_topic: setpoint_topic.into(),
         }
     }
@@ -38,31 +40,80 @@ impl NakostatWidget {
         mqtt: Option<&dyn MqttPublisher>,
     ) -> Option<Duration> {
         if let Some(setpoint) = self.debouncer.observe(self.dial.setpoint, touching, now) {
-            self.publish_setpoint(setpoint, mqtt);
+            if self.publish_setpoint(setpoint, mqtt) {
+                self.sync.on_publish(setpoint, now);
+            }
         }
-        self.debouncer.time_to_settle(now)
+        // Wake for whichever comes first: the settle, or the echo timeout.
+        match (
+            self.debouncer.time_to_settle(now),
+            self.sync.time_to_timeout(now),
+        ) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
     }
 
-    fn publish_setpoint(&self, setpoint: f32, mqtt: Option<&dyn MqttPublisher>) {
+    /// Follow the daemon's effective setpoint, unless the user is mid-change.
+    /// `latest` is `(state seq, effective setpoint)`. Returns whether the dial moved.
+    fn apply_daemon_state(
+        &mut self,
+        latest: Option<(u64, f32)>,
+        touching: bool,
+        now: Instant,
+    ) -> bool {
+        let busy = touching || self.debouncer.is_pending();
+        match self.sync.reconcile(latest, busy, now) {
+            Some(setpoint) => {
+                let moved = self.dial.setpoint != setpoint;
+                self.dial.setpoint = setpoint;
+                self.debouncer.rebase(setpoint);
+                moved
+            }
+            None => false,
+        }
+    }
+
+    /// Returns true if the setpoint was actually sent.
+    fn publish_setpoint(&self, setpoint: f32, mqtt: Option<&dyn MqttPublisher>) -> bool {
         let Some(mqtt) = mqtt else {
             log::info!("Setpoint {setpoint:.1}°C settled, but MQTT is not configured");
-            return;
+            return false;
         };
         let payload = setpoint_payload(setpoint, Utc::now(), mqtt.client_id());
         match mqtt.publish(&self.setpoint_topic, payload.as_bytes()) {
-            Ok(()) => log::info!("Published setpoint {setpoint:.1}°C to {}", self.setpoint_topic),
-            Err(e) => log::warn!("Failed to publish setpoint {setpoint:.1}°C: {e}"),
+            Ok(()) => {
+                log::info!(
+                    "Published setpoint {setpoint:.1}°C to {}",
+                    self.setpoint_topic
+                );
+                true
+            }
+            Err(e) => {
+                log::warn!("Failed to publish setpoint {setpoint:.1}°C: {e}");
+                false
+            }
         }
     }
 }
 
+mod heating;
 mod readings;
+mod sync;
+use heating::HeatingView;
 use readings::ReadingsView;
+use sync::StateSync;
 
 impl PishWidget for NakostatWidget {
-    fn id(&self) -> &'static str { "nakostat" }
-    fn title(&self) -> &str { "Heating" }
-    fn min_size(&self) -> Vec2 { Vec2::new(300.0, 300.0) }
+    fn id(&self) -> &'static str {
+        "nakostat"
+    }
+    fn title(&self) -> &str {
+        "Heating"
+    }
+    fn min_size(&self) -> Vec2 {
+        Vec2::new(300.0, 300.0)
+    }
 
     fn on_focus(&mut self) {
         self.waiting_for_release = true;
@@ -70,14 +121,30 @@ impl PishWidget for NakostatWidget {
 
     fn update(&mut self, ui: &mut egui::Ui, services: &Services) {
         let available = ui.available_size();
-        let readings = ReadingsView::from_status(&services.sensor.status());
+        let status = services.sensor.status();
+        let readings = ReadingsView::from_status(&status);
+        let now = Instant::now();
+        let touching = ui.input(|i| i.pointer.any_down());
+        if self.apply_daemon_state(heating::state_input(&status), touching, now) {
+            ui.ctx().request_repaint();
+        }
+        let offset = *chrono::Local::now().offset();
+        let heating = HeatingView::from_status(&status, now, offset);
         if let Some(t) = readings.temperature_c() {
             self.dial.current_temperature = t;
         }
         // Leave a strip under the dial for the sensor readings.
         let readings_h = (available.y * 0.2).clamp(48.0, 110.0);
-        let size = available.x.min(available.y - readings_h).max(100.0);
-        let y_pad = ((available.y - size - readings_h) / 2.0).max(0.0);
+        let heating_h = if heating.is_some() {
+            (available.y * 0.08).clamp(18.0, 30.0)
+        } else {
+            0.0
+        };
+        let size = available
+            .x
+            .min(available.y - readings_h - heating_h)
+            .max(100.0);
+        let y_pad = ((available.y - size - readings_h - heating_h) / 2.0).max(0.0);
 
         // Suppress setpoint changes until the opening touch has been fully released.
         let saved = self.dial.setpoint;
@@ -86,6 +153,11 @@ impl PishWidget for NakostatWidget {
             self.dial.show(ui);
         });
         readings.show(ui, readings_h);
+        if let Some(h) = &heating {
+            h.show(ui, heating_h);
+            // Repaint so "state out of date" appears without needing input.
+            ui.ctx().request_repaint_after(Duration::from_secs(30));
+        }
         if self.waiting_for_release {
             self.dial.setpoint = saved;
             if ui.input(|i| !i.pointer.any_down()) {
@@ -93,8 +165,7 @@ impl PishWidget for NakostatWidget {
             }
         }
 
-        let touching = ui.input(|i| i.pointer.any_down());
-        if let Some(wait) = self.after_dial(touching, Instant::now(), services.mqtt.as_deref()) {
+        if let Some(wait) = self.after_dial(touching, now, services.mqtt.as_deref()) {
             ui.ctx().request_repaint_after(wait);
         }
     }
@@ -115,16 +186,18 @@ pub struct SetpointDebouncer {
 
 impl SetpointDebouncer {
     pub fn new(initial: f32, settle: Duration) -> Self {
-        Self { settle, last_published: initial, pending: None }
+        Self {
+            settle,
+            last_published: initial,
+            pending: None,
+        }
     }
 
     /// Feed the current dial value. Returns `Some(value)` exactly once per settle.
     pub fn observe(&mut self, value: f32, touching: bool, now: Instant) -> Option<f32> {
         match self.pending {
             Some((v, _)) if touching || v != value => self.pending = Some((value, now)),
-            None if touching || value != self.last_published => {
-                self.pending = Some((value, now))
-            }
+            None if touching || value != self.last_published => self.pending = Some((value, now)),
             Some((v, since)) if now.duration_since(since) >= self.settle => {
                 self.pending = None;
                 if v != self.last_published {
@@ -135,6 +208,18 @@ impl SetpointDebouncer {
             _ => {}
         }
         None
+    }
+
+    /// True while a change is waiting to settle.
+    pub fn is_pending(&self) -> bool {
+        self.pending.is_some()
+    }
+
+    /// Accept `value` as already published (it came from the daemon), dropping
+    /// any pending change.
+    pub fn rebase(&mut self, value: f32) {
+        self.last_published = value;
+        self.pending = None;
     }
 
     /// Time left until the pending value settles, if one is pending.
@@ -185,7 +270,10 @@ mod tests {
                 return Err(MqttError::Publish("queue full".into()));
             }
             let payload = String::from_utf8(payload.to_vec()).unwrap();
-            self.published.lock().unwrap().push((topic.to_owned(), payload));
+            self.published
+                .lock()
+                .unwrap()
+                .push((topic.to_owned(), payload));
             Ok(())
         }
 
@@ -250,7 +338,11 @@ mod tests {
         assert_eq!(d.observe(21.0, false, t0), None);
         assert_eq!(d.observe(21.0, false, t0 + ms(999)), None);
         assert_eq!(d.observe(21.0, false, t0 + ms(1000)), Some(21.0));
-        assert_eq!(d.observe(21.0, false, t0 + ms(5000)), None, "fires only once");
+        assert_eq!(
+            d.observe(21.0, false, t0 + ms(5000)),
+            None,
+            "fires only once"
+        );
     }
 
     #[test]
@@ -317,6 +409,105 @@ mod tests {
         d.observe(21.0, false, t0);
         assert_eq!(d.time_to_settle(t0 + ms(400)), Some(ms(600)));
         assert_eq!(d.time_to_settle(t0 + ms(2000)), Some(Duration::ZERO));
+    }
+
+    // ── Following the daemon ──────────────────────────────────────────────────
+
+    #[test]
+    fn daemon_state_moves_dial_without_republishing() {
+        let mqtt = MockMqtt::default();
+        let mut w = widget();
+        let t0 = Instant::now();
+        assert!(w.apply_daemon_state(Some((1, 21.5)), false, t0));
+        assert_eq!(w.dial.setpoint, 21.5);
+        for i in 0..10 {
+            w.after_dial(false, t0 + ms(500 * i), Some(&mqtt));
+        }
+        assert!(mqtt.published().is_empty(), "no echo loop");
+    }
+
+    #[test]
+    fn daemon_state_same_as_dial_reports_no_move() {
+        let mut w = widget();
+        assert!(!w.apply_daemon_state(Some((1, 20.0)), false, Instant::now()));
+    }
+
+    #[test]
+    fn touching_dial_beats_daemon_state() {
+        let mut w = widget();
+        let t0 = Instant::now();
+        w.dial.setpoint = 22.0;
+        assert!(!w.apply_daemon_state(Some((1, 18.0)), true, t0));
+        assert_eq!(w.dial.setpoint, 22.0);
+    }
+
+    #[test]
+    fn unpublished_change_beats_daemon_state() {
+        let mqtt = MockMqtt::default();
+        let mut w = widget();
+        let t0 = Instant::now();
+        w.dial.setpoint = 22.0;
+        w.after_dial(false, t0, Some(&mqtt)); // now pending
+        assert!(!w.apply_daemon_state(Some((1, 18.0)), false, t0 + ms(100)));
+        assert_eq!(w.dial.setpoint, 22.0);
+        // It publishes, and the stale state still does not clobber it...
+        w.after_dial(false, t0 + SETTLE_TIME, Some(&mqtt));
+        assert_eq!(mqtt.published().len(), 1);
+        assert!(!w.apply_daemon_state(Some((1, 18.0)), false, t0 + SETTLE_TIME + ms(10)));
+        assert_eq!(w.dial.setpoint, 22.0);
+        // ...until the echo, after which a later external change is followed.
+        assert!(!w.apply_daemon_state(Some((2, 22.0)), false, t0 + SETTLE_TIME + ms(500)));
+        assert!(w.apply_daemon_state(Some((3, 19.0)), false, t0 + SETTLE_TIME + ms(900)));
+        assert_eq!(w.dial.setpoint, 19.0);
+    }
+
+    #[test]
+    fn echo_wait_times_out_and_daemon_wins() {
+        let mqtt = MockMqtt::default();
+        let mut w = widget();
+        let t0 = Instant::now();
+        w.dial.setpoint = 22.0;
+        w.after_dial(false, t0, Some(&mqtt));
+        w.after_dial(false, t0 + SETTLE_TIME, Some(&mqtt));
+        let late = t0 + SETTLE_TIME + sync::ECHO_TIMEOUT;
+        assert!(w.apply_daemon_state(Some((1, 18.0)), false, late));
+        assert_eq!(w.dial.setpoint, 18.0);
+    }
+
+    #[test]
+    fn failed_publish_does_not_wait_for_an_echo() {
+        let mqtt = MockMqtt {
+            fail: true,
+            ..Default::default()
+        };
+        let mut w = widget();
+        let t0 = Instant::now();
+        w.dial.setpoint = 22.0;
+        w.after_dial(false, t0, Some(&mqtt));
+        w.after_dial(false, t0 + SETTLE_TIME, Some(&mqtt));
+        assert!(w.apply_daemon_state(Some((1, 18.0)), false, t0 + SETTLE_TIME + ms(10)));
+    }
+
+    #[test]
+    fn after_dial_repaint_covers_echo_timeout() {
+        let mqtt = MockMqtt::default();
+        let mut w = widget();
+        let t0 = Instant::now();
+        w.dial.setpoint = 22.0;
+        w.after_dial(false, t0, Some(&mqtt));
+        let wait = w.after_dial(false, t0 + SETTLE_TIME, Some(&mqtt));
+        assert_eq!(wait, Some(sync::ECHO_TIMEOUT));
+    }
+
+    #[test]
+    fn debouncer_rebase_clears_pending_and_sets_baseline() {
+        let t0 = Instant::now();
+        let mut d = SetpointDebouncer::new(20.0, ms(1000));
+        d.observe(21.0, false, t0);
+        assert!(d.is_pending());
+        d.rebase(23.0);
+        assert!(!d.is_pending());
+        assert_eq!(d.observe(23.0, false, t0 + ms(5000)), None);
     }
 
     // ── Payload ───────────────────────────────────────────────────────────────
@@ -398,7 +589,10 @@ mod tests {
 
     #[test]
     fn publish_failure_is_logged_not_fatal() {
-        let mqtt = MockMqtt { fail: true, ..Default::default() };
+        let mqtt = MockMqtt {
+            fail: true,
+            ..Default::default()
+        };
         let mut w = widget();
         let t0 = Instant::now();
         w.dial.setpoint = 23.0;
