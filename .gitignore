@@ -1,6 +1,7 @@
 .DS_Store
 **/*.bkp
 PLAN.md
+PLAN.pdf
 
 # Rust build artefacts
 target/
